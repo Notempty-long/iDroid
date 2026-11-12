@@ -33,7 +33,8 @@ fi
 
 install -m 0755 "$ROOT/initramfs/init" "$root/init"
 install -m 0755 "$ROOT/initramfs/android.sh" "$root/android.sh"
-install -m 0755 "$nbd" "$root/bin/nbd-client"
+mkdir -p "$root/usr/local/bin"
+install -m 0755 "$nbd" "$root/usr/local/bin/nbd-client"
 
 mkdir -p "$OUT/initramfs"
 log "packing initramfs"
@@ -43,8 +44,8 @@ log "packing initramfs"
 mv "$out.tmp" "$out"
 
 zcat "$out" | cpio -t --quiet >/dev/null 2>&1 || die "repacked initramfs is not readable"
-require_file "$root/bin/nbd-client"
+require_file "$root/usr/local/bin/nbd-client"
 [ -x "$root/init" ] || die "init is not executable in the root tree"
 
 ok "initramfs: ${out#"$ROOT"/} ($(stat -c%s "$out") bytes)"
-ok "  /init, /android.sh, /bin/nbd-client installed"
+ok "  /init, /android.sh, /usr/local/bin/nbd-client installed"

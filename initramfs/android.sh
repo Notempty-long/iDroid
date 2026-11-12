@@ -8,6 +8,7 @@
 NBD_HOST="${NBD_HOST:-172.16.42.2}"
 NBD_PORT="${NBD_PORT:-10809}"
 NBD_EXPORT="${NBD_EXPORT:-idroid}"
+NBD_CLIENT="${NBD_CLIENT:-/usr/local/bin/nbd-client}"
 
 log() { echo "[idroid] $*"; }
 die() { log "$*"; log "dropping to first-stage shell"; exec /bin/sh; }
@@ -42,13 +43,19 @@ ip addr show dev "$IFACE" | grep -q '172\.16\.42\.1' || ip addr add 172.16.42.1/
 mdev -s
 
 log "connecting NBD $NBD_HOST:$NBD_PORT (export $NBD_EXPORT)"
+# Install our static client outside BusyBox's applet directories: busybox
+# --install -s creates /bin/nbd-client and would shadow a binary placed there.
+if [ ! -x "$NBD_CLIENT" ]; then
+  NBD_CLIENT="$(command -v nbd-client)" || die "nbd-client not found"
+fi
+
 # -N selects the export name. We build nbd-client without libnl, and its
 # persist/reconnect monitor is netlink-only in 3.27.x, so -persist would be
 # silently ignored. Do not pass it: a dropped link is handled by rebooting into
 # the first-stage shell (idroid_debug=1) and reconnecting by hand.
-if ! nbd-client "$NBD_HOST" "$NBD_PORT" /dev/nbd0 -N "$NBD_EXPORT"; then
+if ! "$NBD_CLIENT" "$NBD_HOST" "$NBD_PORT" /dev/nbd0 -N "$NBD_EXPORT"; then
   log "named export failed, retrying with the default export"
-  nbd-client "$NBD_HOST" "$NBD_PORT" /dev/nbd0 || die "nbd-client failed (host: scripts/netboot/serve-nbd.sh)"
+  "$NBD_CLIENT" "$NBD_HOST" "$NBD_PORT" /dev/nbd0 || die "nbd-client failed (host: scripts/netboot/serve-nbd.sh)"
 fi
 
 # Let the kernel read the GPT and mdev create /dev/nbd0pN nodes.
