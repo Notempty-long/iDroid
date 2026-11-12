@@ -45,6 +45,16 @@ DHCP server on this link. `serve-nbd.sh` uses `qemu-nbd --persistent --shared=4`
 on `172.16.42.2:10809`. It must be started only after `usb0` is up, otherwise
 the bind fails.
 
+If the host runs a firewall, allow inbound traffic from the link subnet. With
+ufw, `setup-usbnet.sh` adds this automatically; otherwise do it by hand:
+
+```sh
+sudo ufw allow from 172.16.42.0/24 comment 'iDroid USB netboot'
+```
+
+ICMP is usually allowed by default, so the link still pings while TCP SYNs to
+`10809` are dropped; `nbd-client` then blocks in `connect()` with no output.
+
 ### Device
 
 The Android initramfs must, in order:
