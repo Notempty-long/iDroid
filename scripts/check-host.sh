@@ -34,6 +34,8 @@ check curl
 check unzip
 check sha256sum
 check xxd
+check cpio
+check gzip
 
 echo "== boot chain =="
 check irecovery "libimobiledevice"
@@ -47,19 +49,19 @@ fi
 
 echo "== netboot =="
 check qemu-nbd
-check dnsmasq
 check ip
+optional dnsmasq "not needed: the phone runs unudhcpd"
 
 echo "== disk images =="
 check sgdisk
-check mkfs.ext4
+check mke2fs
 check e2fsck
+check debugfs
+check readelf
 
 echo "== optional =="
 optional dtc "kernel builds its own if missing"
-optional debugfs "GSI 16K check"
-optional readelf "GSI 16K check"
-optional aarch64-linux-gnu-gcc "native builds may use clang/LLVM instead"
+optional aarch64-linux-gnu-gcc "needed for the static nbd-client"
 optional adb "not used until Android boots"
 optional shellcheck "script linting"
 

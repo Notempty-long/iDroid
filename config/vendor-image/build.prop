@@ -1,0 +1,6 @@
+# iDroid vendor build properties.
+#
+# The GSI is a system-only image, so this partition supplies the missing
+# vendor-side policy and the hardware name. init imports
+# /vendor/etc/init/hw/init.${ro.hardware}.rc, which we provide.
+ro.hardware=idroid

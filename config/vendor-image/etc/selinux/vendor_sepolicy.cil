@@ -1,0 +1,6 @@
+; iDroid minimal vendor SELinux policy.
+;
+; The GSI is system-only (Treble split policy). init requires the vendor policy
+; files to exist and compiles plat + vendor + mapping with secilc at boot.
+; Nothing in this port has a vendor domain yet, so the vendor policy is empty.
+; Add vendor types and allow rules here when vendor services are introduced.

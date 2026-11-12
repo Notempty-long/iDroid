@@ -1,0 +1,4 @@
+; iDroid versioned platform policy for the vendor image.
+;
+; Exported platform types/attributes used by vendor policy. Empty because this
+; vendor image has no vendor policy rules yet.

@@ -1,0 +1,4 @@
+# iDroid vendor init hooks.
+#
+# Intentionally empty for bring-up: there are no vendor HALs or services yet.
+# Add services here (touch, sensors, etc.) as they are ported.

@@ -1,1 +1,1 @@
-console=tty0 loglevel=7 panic=10
+console=tty0 loglevel=7 panic=10 androidboot.selinux=permissive androidboot.verifiedbootstate=orange androidboot.hardware=idroid
