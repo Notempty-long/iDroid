@@ -11,8 +11,15 @@ Thumbs.db
 *.log
 
 # Build output
-build/
-dist/
-out/
-bin/
-obj/
+/out/
+/cache/
+
+# Images and archives (GSI, disk, vendor, firmware dumps)
+*.img
+*.img.gz
+*.zip
+*.tar.gz
+
+# Python
+__pycache__/
+*.pyc
