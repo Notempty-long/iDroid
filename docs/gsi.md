@@ -43,22 +43,42 @@ own with verification disabled).
 ## 16 KiB verification
 
 A 16 KiB kernel cannot run system libraries whose ELF `LOAD` segments are only
-4 KiB aligned. `check-gsi-16k.sh` uses `debugfs` to extract `libc.so` (and
-`init` if present) and reports the maximum `p_align`:
+4 KiB aligned. `check-gsi-16k.sh` uses `debugfs` to extract an ELF from the
+image and reports the maximum `p_align`:
 
 - `0x4000` (16384) or greater → compatible.
 - `0x1000` (4096) → not compatible; do not expect a boot. Build the system
   image from AOSP with 16 KiB pages, or use a GSI explicitly built for 16 KiB.
+
+Verified for the pinned image (`BP4A.251205.006`): `/system/bin/init` has
+`max p_align = 0x4000` (16384). The ext4 block size is 4096, which is
+independent of the page size and does not block a 16 KiB kernel.
 
 Note that ext4 block size does **not** have to equal the page size; a 4 KiB
 ext4 filesystem mounts fine on a 16 KiB kernel. ELF alignment is the blocker.
 
 ## Vendor interface
 
+The GSI is system-only. Treble split SELinux policy means Android cannot load
+its policy without a vendor side, so `scripts/build-vendor-image.sh` creates a
+minimal ext4 `vendor.img` containing:
+
+- `/vendor/etc/selinux/plat_sepolicy_vers.txt` (`202504`, matching the GSI's
+  mapping file)
+- `/vendor/etc/selinux/vendor_sepolicy.cil` and `plat_pub_versioned.cil`
+  (empty for now; no vendor domains exist yet)
+- empty vendor `*_contexts` files
+- `/vendor/build.prop` with `ro.hardware=idroid`
+- `/vendor/etc/init/hw/init.idroid.rc` (empty hook)
+
+This is validated by compiling the same file set with secilc that init invokes
+at boot. Once vendor services are added, put their types and rules in
+`config/vendor-image/etc/selinux/vendor_sepolicy.cil`.
+
 | Component | Source | Notes |
 |---|---|---|
 | `system` | GSI | read-only, 16 KiB |
-| `vendor` | built here | HALs, firmware, init scripts, policy, `hx-touchd` |
+| `vendor` | built here | minimal split SELinux policy + `build.prop`; HALs later |
 | `product` | from GSI / vendor | optional split |
 | `vbmeta` | built here | `--disable-verity --disable-verification` |
 | `userdata` | host-created ext4 | wiped between experiments |

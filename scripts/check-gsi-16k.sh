@@ -9,12 +9,37 @@ require_cmd readelf
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
+# debugfs cannot dump a symlink, and GSI images often ship libc.so as one.
+# Follow short symlinks inside the image until a regular file is reached.
+resolve_regular() {
+  local path="$1" stat_out type dest
+  local -i depth=0
+  while [ "$depth" -lt 8 ]; do
+    stat_out="$(debugfs -R "stat $path" "$img" 2>/dev/null)" || return 1
+    type="$(sed -n 's/^Inode: [0-9]* *Type: \([a-z]*\).*/\1/p' <<<"$stat_out")"
+    case "$type" in
+      regular) printf '%s\n' "$path"; return 0 ;;
+      symlink)
+        dest="$(sed -n 's/^Fast link dest: "\(.*\)"$/\1/p' <<<"$stat_out")"
+        [ -n "$dest" ] || return 1
+        case "$dest" in
+          /*) path="$dest" ;;
+          *)  path="$(dirname "$path")/$dest" ;;
+        esac
+        ;;
+      *) return 1 ;;
+    esac
+    depth+=1
+  done
+  return 1
+}
+
 target=""
 for candidate in /system/lib64/libc.so /lib64/libc.so /system/bin/init /init; do
-  if debugfs -R "stat $candidate" "$img" >/dev/null 2>&1; then
-    target="$candidate"
+  if target="$(resolve_regular "$candidate")"; then
     break
   fi
+  target=""
 done
 [ -n "$target" ] || die "no known ELF found in $img (ext4 expected)"
 

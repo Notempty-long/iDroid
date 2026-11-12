@@ -1,0 +1,49 @@
+#!/bin/busybox sh
+# iDroid first-stage init.
+#
+# Built on Hoolock's example initramfs: its init_functions.sh already knows how
+# to bring up the USB gadget (NCM with RNDIS fallback) and to run a DHCP server
+# so the host gets 172.16.42.2. We replace its default "debug shell" behaviour
+# with a handoff to Android over NBD.
+#
+# Drop to a shell instead of booting Android with:  idroid_debug=1
+# Replace this script's Android step with a plain shell by setting that in the
+# m1n1 bootargs (it is read from /proc/cmdline).
+
+set -a
+LOG_PREFIX="[idroid]"
+
+[ -e /etc/unudhcpd.conf ] && . /etc/unudhcpd.conf
+. ./init_functions.sh
+
+export PATH=/usr/bin:/bin:/usr/sbin:/sbin
+/bin/busybox --install -s
+
+# Hoolock's build packs most binaries in a second cpio archive.
+if [ -e /extract.cpio.lzma ]; then
+  cat /extract.cpio.lzma | lzma -dc | cpio -id
+  rm -f /extract.cpio.lzma
+  /bin/busybox-extras --install -s
+fi
+
+mount_proc_sys_dev
+setup_log
+
+echo "iDroid first stage starting"
+setup_usb_network
+start_unudhcpd
+setup_mdev
+
+# Stage-1 shell over the network. Keep it available even when Android boots, so
+# a failed handoff can still be inspected from the host.
+if command -v telnetd >/dev/null 2>&1; then
+  telnetd -b 172.16.42.1:23 -l /bin/sh 2>/dev/null || true
+fi
+
+if grep -q 'idroid_debug=1' /proc/cmdline 2>/dev/null; then
+  echo "idroid_debug=1: staying in the first-stage shell"
+  debug_shell
+  while true; do sleep 255; done
+fi
+
+exec /android.sh

@@ -8,7 +8,8 @@ acceptance test so "it boots" is not the only signal.
 - [x] Vendor HoolockLinux kernel/m1n1/docs, `remote_boot`, Sandcastle
 - [x] Apply the `d101ap` patch to `remote_boot`
 - [x] Build scripts for kernel and m1n1 payload
-- [ ] Kernel builds with `config_16k` + `config/android.fragment`
+- [x] Kernel builds with `config_16k` + `config/android.fragment`
+- [x] GSI fetched, checksum verified, and confirmed 16 KiB compatible
 - [ ] Phone boots Hoolock Linux with display output
 - [ ] Host reaches `172.16.42.1` over `usb0`
 
@@ -17,9 +18,10 @@ network gadget; no Android yet.
 
 ## M1 — Android first-stage init over NBD
 
-- [ ] Build a minimal first-stage ramdisk (init + nbd-client + busybox/static)
-- [ ] ueventd rules for `nbd0pN` and `by-name` symlinks
-- [ ] fstab pointing at NBD partitions
+- [x] Build a minimal first-stage ramdisk (init + nbd-client + busybox/static)
+- [x] Build a minimal `vendor.img` with split SELinux policy files
+- [x] Create `by-name` symlinks for `nbd0pN`
+- [x] Mount system/vendor/userdata from the first-stage init
 - [ ] Serve `out/disk.img` and reach Android's first-stage logs
 
 **Acceptance:** first-stage init detects `system`/`vendor`/`userdata`, mounts
@@ -41,7 +43,7 @@ or at least a running `system_server`; display shows Android UI.
 - [ ] `hx-touchd` packaged and started; touch events reach InputReader
 - [ ] Lights/health/power stubs
 - [ ] Audio stub or simple card
-- [ ] `vendor.img` reproducible via `scripts/build-vendor.sh`
+- [x] `vendor.img` reproducible via `scripts/build-vendor-image.sh`
 - [ ] 16 KiB alignment check for every vendor ELF
 
 **Acceptance:** touch works in the UI; `vendor.img` is rebuilt from a clean tree.

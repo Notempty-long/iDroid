@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# Assemble the Android first-stage ramdisk.
+#
+# Base: Hoolock's Alpine/musl initramfs (USB gadget + DHCP already works).
+# Added: static nbd-client, our /init, and /android.sh (NBD + mount + handoff).
+. "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)/lib.sh"
+
+require_cmd cpio
+require_cmd gzip
+require_cmd zcat
+
+base="$CACHE/initramfs/base/initramfs.gz"
+root="$OUT/initramfs/root"
+out="$OUT/initramfs/initramfs.gz"
+
+require_file "$base" "run scripts/fetch-initramfs.sh"
+require_file "$ROOT/initramfs/init" "repository is incomplete"
+require_file "$ROOT/initramfs/android.sh" "repository is incomplete"
+
+# Prefer the pinned static build; fall back to an explicit override.
+nbd="${NBD_CLIENT:-$CACHE/nbd-client/3.27.1/nbd-client}"
+require_file "$nbd" "run scripts/fetch-nbd-client.sh"
+
+rm -rf "$root"
+mkdir -p "$root"
+log "unpacking $(basename "$base")"
+(cd "$root" && zcat "$base" | cpio -idm --quiet)
+
+# Keep the original around for debugging (not used at boot).
+if [ -f "$root/init" ]; then
+  mv "$root/init" "$root/init.hoolock"
+fi
+
+install -m 0755 "$ROOT/initramfs/init" "$root/init"
+install -m 0755 "$ROOT/initramfs/android.sh" "$root/android.sh"
+install -m 0755 "$nbd" "$root/bin/nbd-client"
+
+mkdir -p "$OUT/initramfs"
+log "packing initramfs"
+(cd "$root" && find . -print0 \
+  | cpio --null -o -H newc --owner=0:0 --reproducible --quiet \
+  | gzip -9) > "$out.tmp"
+mv "$out.tmp" "$out"
+
+zcat "$out" | cpio -t --quiet >/dev/null 2>&1 || die "repacked initramfs is not readable"
+require_file "$root/bin/nbd-client"
+[ -x "$root/init" ] || die "init is not executable in the root tree"
+
+ok "initramfs: ${out#"$ROOT"/} ($(stat -c%s "$out") bytes)"
+ok "  /init, /android.sh, /bin/nbd-client installed"
