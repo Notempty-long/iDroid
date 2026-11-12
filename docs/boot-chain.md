@@ -50,7 +50,8 @@ The local patch is required: `remote_boot` normally derives `CPID`, `MODEL`, and
 
 ```sh
 scripts/build-kernel.sh
-scripts/build-m1n1-blob.sh
+scripts/build-android-initramfs.sh
+INITRAMFS=out/initramfs/initramfs.gz scripts/build-m1n1-blob.sh
 ```
 
 Per Hoolock's documentation, the payload is a concatenation:
@@ -102,8 +103,13 @@ Success for this milestone:
 
 1. Display shows Hoolock's boot output / framebuffer console.
 2. Host sees a new USB network interface (typically `usb0`).
-3. Host `172.16.42.2` can reach the device at `172.16.42.1` (telnet port 23
-   with Hoolock's example initramfs).
+3. Host `172.16.42.2` can reach the device at `172.16.42.1` (telnet port 23).
 4. `lsusb` shows the gadget re-enumerated (Apple VID/PID plus a network function).
+5. The console prints `iDroid first stage starting`, then the NBD connection
+   and mount messages from `/android.sh`.
+
+With the Android ramdisk the phone proceeds straight into the Android handoff.
+Add `idroid_debug=1` to `config/cmdline` to stay in the Linux shell instead; see
+`docs/netboot.md`.
 
 Only after that should the Android rootfs be involved.

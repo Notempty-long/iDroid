@@ -45,7 +45,8 @@ cache/       downloads and extracted images (ignored)
 
 Requirements: Linux x86_64 or arm64, root for booting/netboot, ~10 GB free,
 `clang`, `ld.lld`, `git`, `make`, `ipsw` ≥ 3.1.719, `irecovery`, `libusb` dev
-headers, `qemu-nbd`, `dnsmasq`, `sgdisk`, `unzip`, `xxd`, `lsusb`.
+headers, `qemu-nbd`, `sgdisk`, `cpio`, `e2fsprogs`, `unzip`, `xxd`, `lsusb`,
+`aarch64-linux-gnu-gcc` (for the static `nbd-client`).
 
 ```sh
 scripts/check-host.sh        # verify host dependencies
@@ -53,12 +54,19 @@ scripts/vendor-sync.sh       # fetch pinned sources + apply patches
 scripts/fetch-m1n1.sh        # download prebuilt m1n1-idevice + monitor-stub
 scripts/build-kernel.sh      # Image.gz + t8010-d101.dtb (16K pages)
 scripts/fetch-gsi.sh         # download + checksum + extract Android 16 GSI
-scripts/netboot/make-disk.sh # create the NBD disk image (GPT)
-scripts/build-m1n1-blob.sh   # concatenate the m1n1 boot bundle
-scripts/boot.sh              # phone must be in DFU; runs remote_boot
+scripts/check-gsi-16k.sh     # verify the GSI's ELF alignment
+scripts/build-vendor-image.sh             # out/vendor.img (split SELinux policy)
+scripts/netboot/make-disk.sh out/disk.img cache/gsi/current/system.img
+scripts/build-android-initramfs.sh        # first-stage ramdisk
+INITRAMFS=out/initramfs/initramfs.gz scripts/build-m1n1-blob.sh
+scripts/netboot/setup-usbnet.sh usb0      # host 172.16.42.2
+scripts/netboot/serve-nbd.sh out/disk.img # export the disk over NBD
+sudo scripts/boot.sh                      # phone must be in DFU
 ```
 
-`make <target>` wraps the same commands; `make help` lists them.
+`make <target>` wraps the same commands; `make help` lists them. `make
+boot-image` builds and bundles the ramdisk; `make linux-image` builds a debug
+bundle without it.
 
 ## Vendored sources
 
