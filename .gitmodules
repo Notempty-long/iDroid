@@ -1,0 +1,20 @@
+[submodule "vendor/linux"]
+	path = vendor/linux
+	url = https://github.com/HoolockLinux/linux
+	branch = hoolock
+[submodule "vendor/m1n1"]
+	path = vendor/m1n1
+	url = https://github.com/HoolockLinux/m1n1
+	branch = idevice
+[submodule "vendor/remote_boot"]
+	path = vendor/remote_boot
+	url = https://github.com/HoolockLinux/remote_boot
+	branch = master
+[submodule "vendor/projectsandcastle"]
+	path = vendor/projectsandcastle
+	url = https://github.com/corellium/projectsandcastle
+	branch = master
+[submodule "vendor/docs"]
+	path = vendor/docs
+	url = https://github.com/HoolockLinux/docs
+	branch = master

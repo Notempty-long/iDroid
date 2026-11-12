@@ -1,0 +1,15 @@
+--- a/remoteboot.sh
++++ b/remoteboot.sh
+@@ -150,9 +150,9 @@
+ 
+ get_device_info()
+ {
+-	CPID="$(irecovery -q | grep CPID | sed -E 's/^CPID: (.*)$/\1/')"
+-	MODEL="$(irecovery -q | grep MODEL | sed -E 's/^MODEL: (.*)$/\1/')"
+-	PRODUCT="$(irecovery -q | grep PRODUCT | sed -E 's/^PRODUCT: (.*)$/\1/')"
++	CPID="0x8010"
++	MODEL="d101ap"
++	PRODUCT="iPhone9,3"
+ 
+ 	if [ "$CPID" = "0x8960" ] || [ "$CPID" = "0x7000" ] ||[ "$CPID" = "0x7001" ] || [ "$CPID" = "0x8000" ] || [ "$CPID" = "0x8001" ] || [ "$CPID" = "0x8003" ]; then
+ 		two_stage="1";
