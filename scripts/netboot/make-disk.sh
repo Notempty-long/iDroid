@@ -35,6 +35,15 @@ if [ -n "$system" ]; then
   require_file "$system"
   start="$(sgdisk -i 2 "$img" | sed -n 's/^First sector: \([0-9][0-9]*\).*/\1/p')"
   [ -n "$start" ] || die "could not read system partition offset"
+
+  sectors="$(sgdisk -i 2 "$img" | sed -n 's/^Partition size: \([0-9][0-9]*\) sectors.*/\1/p')"
+  [ -n "$sectors" ] || die "could not read system partition size"
+  max_bytes=$((sectors * 512))
+  system_bytes="$(stat -c%s "$system")"
+  if [ "$system_bytes" -gt "$max_bytes" ]; then
+    die "$system is $system_bytes bytes but partition 2 is $max_bytes bytes; raise SYSTEM_SIZE"
+  fi
+
   log "writing $system into partition 2 at sector $start"
   dd if="$system" of="$img" bs=512 seek="$start" conv=notrunc,sparse status=progress
 fi

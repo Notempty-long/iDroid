@@ -42,6 +42,12 @@ if [ ! -f "$dest/system.img" ]; then
   rm -rf "$dest"
   mkdir -p "$dest"
   unzip -q -o "$archive" -d "$dest"
+
+  # Some GSI archives nest the images one level deep.
+  if [ ! -f "$dest/system.img" ]; then
+    found="$(find "$dest" -maxdepth 3 -type f -name system.img | head -n1)"
+    [ -n "$found" ] && ln -sfn "$(realpath --relative-to="$dest" "$found")" "$dest/system.img"
+  fi
 fi
 
 require_file "$dest/system.img" "GSI zip did not contain system.img"

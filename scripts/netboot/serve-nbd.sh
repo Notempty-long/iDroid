@@ -13,5 +13,6 @@ if ! ip addr show 2>/dev/null | grep -qF "inet $bind/"; then
 fi
 
 confirm "Serve ${img#"$ROOT"/} read-write over NBD on $bind:$port?"
-log "NBD: $img -> $bind:$port (persistent, shared)"
-exec qemu-nbd --format=raw --persistent --shared=4 --bind="$bind" --port="$port" "$img"
+log "NBD: $img -> $bind:$port (export 'idroid', persistent, shared)"
+exec qemu-nbd --format=raw --persistent --shared=4 --export-name=idroid \
+  --bind="$bind" --port="$port" "$img"
