@@ -69,8 +69,11 @@ The Android initramfs must, in order:
 4. Export `by-name` symlinks for the GPT partitions (ueventd rules or a small
    first-stage helper): `system → nbd0p2`, `vendor → nbd0p3`,
    `userdata → nbd0p4`, `vbmeta → nbd0p1`.
-5. Mount `system`/`vendor` read-only, `userdata` read-write, and hand off to
-   Android's `init selinux_setup`.
+5. Mount the partitions and hand off to Android's `init selinux_setup`:
+   `nbd0p2` (the GSI) is **system-as-root**, so it becomes the new root via
+   `chroot`; `nbd0p3` is mounted at `/vendor` and `nbd0p4` at `/data` inside it.
+   `/dev`, `/proc` and `/sys` are moved into the new root first, because the
+   stock ramdisk init does the same before re-exec'ing the system init.
 
 Because the fstab and first-stage ramdisk are ours, absolute
 `/dev/block/nbd0pN` paths are acceptable; `by-name` symlinks just make the

@@ -9,6 +9,7 @@ NBD_HOST="${NBD_HOST:-172.16.42.2}"
 NBD_PORT="${NBD_PORT:-10809}"
 NBD_EXPORT="${NBD_EXPORT:-idroid}"
 NBD_CLIENT="${NBD_CLIENT:-/usr/local/bin/nbd-client}"
+NEWROOT="${NEWROOT:-/newroot}"
 
 log() { echo "[idroid] $*"; }
 die() { log "$*"; log "dropping to first-stage shell"; exec /bin/sh; }
@@ -84,41 +85,49 @@ mount_one() {
   return 1
 }
 
-mount_one /dev/nbd0p2 /system "ro" \
+# The GSI is a system-as-root image: its root contains /init, /bin, /product
+# and /system_ext as symlinks into /system. Mounting it at /system would put
+# the real tree under /system/system, so the image must become the new root.
+mkdir -p "$NEWROOT"
+mount_one /dev/nbd0p2 "$NEWROOT" "ro" \
   || die "cannot mount system (is the disk image formatted and is partition 2 the GSI?)"
 
 # vendor is ours and may be empty during bring-up.
-if ! mount_one /dev/nbd0p3 /vendor "ro"; then
+if ! mount_one /dev/nbd0p3 "$NEWROOT/vendor" "ro"; then
   log "vendor partition missing or unformatted; continuing without it"
-  mkdir -p /vendor
+  mkdir -p "$NEWROOT/vendor"
 fi
 
 # userdata is disposable. Format only when explicitly requested, never silently.
-if ! mount_one /dev/nbd0p4 /data "rw,nosuid,nodev"; then
+if ! mount_one /dev/nbd0p4 "$NEWROOT/data" "rw,nosuid,nodev"; then
   if grep -q 'idroid_format_userdata=1' /proc/cmdline 2>/dev/null; then
     log "formatting userdata as ext4"
     mkfs.ext4 -F -L userdata /dev/nbd0p4 >/dev/null 2>&1 \
-      && mount_one /dev/nbd0p4 /data "rw,nosuid,nodev" \
+      && mount_one /dev/nbd0p4 "$NEWROOT/data" "rw,nosuid,nodev" \
       || log "userdata format/mount failed"
   else
     log "userdata not formatted (add idroid_format_userdata=1 to format it)"
   fi
 fi
-[ -d /data ] && grep -q ' /data ' /proc/mounts || mount -t tmpfs tmpfs /data 2>/dev/null || true
+mkdir -p "$NEWROOT/data"
+chmod 0771 "$NEWROOT/data" 2>/dev/null || true
 
 # Android expects a metadata mount; use tmpfs until an encrypted metadata
 # partition exists.
-mkdir -p /metadata
-mount -t tmpfs tmpfs /metadata 2>/dev/null || true
-chmod 0771 /metadata 2>/dev/null || true
+mkdir -p "$NEWROOT/metadata"
+mount -t tmpfs tmpfs "$NEWROOT/metadata" 2>/dev/null || true
+chmod 0771 "$NEWROOT/metadata" 2>/dev/null || true
 
-# Some GSI layouts expose product/system_ext inside system; make the standard
-# top-level paths resolvable for init.
-[ -e /product ] || ln -sfn /system/product /product
-[ -e /system_ext ] || ln -sfn /system/system_ext /system_ext
+# The stock ramdisk init mounts /dev, /proc and /sys before re-exec'ing the
+# system init with selinux_setup. Carry ours over into the new root.
+for d in dev proc sys; do
+  mkdir -p "$NEWROOT/$d"
+  if ! mount -o move "/$d" "$NEWROOT/$d" 2>/dev/null; then
+    mount -o rbind "/$d" "$NEWROOT/$d" 2>/dev/null || log "could not carry over /$d"
+  fi
+done
 
-log "handing off to Android init"
-# selinux_setup loads the policy from /system and re-execs init second_stage.
-# We deliberately do not use switch_root: Android's second stage expects the
-# ramdisk root with /system, /vendor and /data mounted onto it.
-exec /system/bin/init selinux_setup
+log "handing off to Android init (system-as-root, chroot)"
+# selinux_setup loads the policy from /system + /vendor and then re-execs init
+# second_stage. PID 1 is preserved: chroot execs the target in place.
+exec chroot "$NEWROOT" /system/bin/init selinux_setup

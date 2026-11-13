@@ -10,8 +10,8 @@ acceptance test so "it boots" is not the only signal.
 - [x] Build scripts for kernel and m1n1 payload
 - [x] Kernel builds with `config_16k` + `config/android.fragment`
 - [x] GSI fetched, checksum verified, and confirmed 16 KiB compatible
-- [ ] Phone boots Hoolock Linux with display output
-- [ ] Host reaches `172.16.42.1` over `usb0`
+- [x] Phone boots Hoolock Linux with display output
+- [x] Host reaches `172.16.42.1` over `usb0`
 
 **Acceptance:** `scripts/boot.sh` produces a running Linux with a reachable
 network gadget; no Android yet.
@@ -22,6 +22,7 @@ network gadget; no Android yet.
 - [x] Build a minimal `vendor.img` with split SELinux policy files
 - [x] Create `by-name` symlinks for `nbd0pN`
 - [x] Mount system/vendor/userdata from the first-stage init
+- [x] NBD link verified from the phone (`NBDMAGIC`, 16 GiB, `nbd0p1..p4`)
 - [ ] Serve `out/disk.img` and reach Android's first-stage logs
 
 **Acceptance:** first-stage init detects `system`/`vendor`/`userdata`, mounts
