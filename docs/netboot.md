@@ -95,12 +95,21 @@ NFS-root ramdisk as a **fallback** for early kernel/init debugging only.
 
 ## Debugging the first stage
 
+The gadget always exposes an ACM serial alongside the network function, and the
+kernel command line sends the console there (`console=ttyGS0 console=tty0`), so
+kernel and Android `init` output are visible before the display works. Capture
+it from the host, across resets and re-enumeration:
+
+```sh
+sudo nohup scripts/netboot/capture-acm.sh /tmp/idroid-acm.log >/dev/null 2>&1 &
+```
+
+Android's `init` reboots itself (to recovery) on fatal errors, so `panic=0` does
+not keep the phone alive; the ACM log is where the reason is printed.
+
 Add `idroid_debug=1` to `config/cmdline` (or the m1n1 bootargs) to stop in the
 ramdisk shell instead of starting Android. The phone also runs `telnetd` on
 `172.16.42.1:23` whenever the gadget is up.
-
-The console is `tty0`; if the display is not initialized yet, use the USB
-serial console exposed by Hoolock's initramfs (`/dev/ttyACM*` on the host).
 
 ## Fallback: NFS root
 

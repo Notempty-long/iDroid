@@ -30,7 +30,12 @@ mount_proc_sys_dev
 setup_log
 
 echo "iDroid first stage starting"
-setup_usb_network
+# The ACM serial carries console=ttyGS0, the only log channel before the
+# display is up. Create the network and serial functions first, then bind the
+# UDC once, so the host does not see a re-enumeration mid-boot.
+setup_usb_network_configfs skip_udc
+setup_usb_acm_configfs
+setup_usb_configfs_udc
 start_unudhcpd
 setup_mdev
 

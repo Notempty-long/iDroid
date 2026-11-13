@@ -39,6 +39,16 @@ done
 # The gadget address is set by start_unudhcpd (172.16.42.1). Make sure it stuck.
 ip addr show dev "$IFACE" | grep -q '172\.16\.42\.1' || ip addr add 172.16.42.1/24 dev "$IFACE"
 
+# The host also needs its lease (and qemu-nbd needs 172.16.42.2) before the
+# connect makes sense; the gadget was just bound, so allow a few seconds.
+log "waiting for host $NBD_HOST to answer"
+i=0
+while ! ping -c 1 -W 1 "$NBD_HOST" >/dev/null 2>&1; do
+  i=$((i + 1))
+  [ "$i" -ge 30 ] && die "host $NBD_HOST unreachable (is scripts/netboot/serve-nbd.sh running?)"
+  sleep 1
+done
+
 # devtmpfs normally creates /dev/nbd0 automatically, but populate /dev once in
 # case the driver registered before devtmpfs was mounted.
 mdev -s
