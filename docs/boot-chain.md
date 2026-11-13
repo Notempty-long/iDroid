@@ -97,19 +97,19 @@ Notes:
 - If the phone boots back to iOS or recovery, the pwn failed: re-enter DFU and
   retry `prep` (checkm8 on A10 can need several attempts).
 
-## 6. Verifying Linux before Android
+## 6. Verifying Linux before the rootfs handoff
 
 Success for this milestone:
 
 1. Display shows Hoolock's boot output / framebuffer console.
 2. Host sees a new USB network interface (typically `usb0`).
-3. Host `172.16.42.2` can reach the device at `172.16.42.1` (telnet port 23).
+3. Host `192.168.137.2` can reach the device at `192.168.137.1` (telnet port 23).
 4. `lsusb` shows the gadget re-enumerated (Apple VID/PID plus a network function).
 5. The console prints `iDroid first stage starting`, then the NBD connection
-   and mount messages from `/android.sh`.
+   and mount messages from `/linux.sh`, followed by `switching root`.
 
-With the Android ramdisk the phone proceeds straight into the Android handoff.
-Add `idroid_debug=1` to `config/cmdline` to stay in the Linux shell instead; see
+Add `idroid_debug=1` to `config/cmdline` to stay in the first-stage shell
+instead; see
 `docs/netboot.md`.
 
 Only after that should the Android rootfs be involved.

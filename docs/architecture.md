@@ -11,7 +11,7 @@ host (Linux)                                     iPhone 7 (A10 / t8010)
 │  RestoreKernelCache =        │               │  → monitor-stub                  │
 │    m1n1 + bootargs + dtb +   │               │  → Hoolock Linux (16K pages)     │
 │    Image.gz + initramfs      │               │  → initramfs                     │
-└──────────────────────────────┘               │       usb0: 172.16.42.1/24       │
+└──────────────────────────────┘               │       usb0: 192.168.137.1/24     │
                                                │       DHCP from host             │
 ┌──────────────────────────────┐   usbnet      │       nbd-client                 │
 │ dnsmasq  (DHCP)              │◀─────────────▶│  → /dev/nbd0 (GPT)               │

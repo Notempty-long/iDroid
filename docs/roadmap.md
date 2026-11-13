@@ -3,72 +3,69 @@
 Milestones are ordered by dependency, not by excitement. Each one has a concrete
 acceptance test so "it boots" is not the only signal.
 
-## M0 — Host + boot chain (current)
+## M0 — Boot chain (done)
 
 - [x] Vendor HoolockLinux kernel/m1n1/docs, `remote_boot`, Sandcastle
 - [x] Apply the `d101ap` patch to `remote_boot`
-- [x] Build scripts for kernel and m1n1 payload
-- [x] Kernel builds with `config_16k` + `config/android.fragment`
-- [x] GSI fetched, checksum verified, and confirmed 16 KiB compatible
-- [x] Phone boots Hoolock Linux with display output
-- [x] Host reaches `172.16.42.1` over `usb0`
+- [x] Kernel builds with `config_16k` (16 KiB pages)
+- [x] Phone boots Hoolock Linux; gadget enumerates; ACM console captured
+- [x] Host reaches the phone over `usb0`
 
-**Acceptance:** `scripts/boot.sh` produces a running Linux with a reachable
-network gadget; no Android yet.
+**Acceptance:** `make boot` produces a running Linux with a reachable USB
+network gadget.
 
-## M1 — Android first-stage init over NBD
+## M1 — Linux rootfs over NBD (current)
 
-- [x] Build a minimal first-stage ramdisk (init + nbd-client + busybox/static)
-- [x] Build a minimal `vendor.img` with split SELinux policy files
-- [x] Create `by-name` symlinks for `nbd0pN`
-- [x] Mount system/vendor/userdata from the first-stage init
-- [x] NBD link verified from the phone (`NBDMAGIC`, 16 GiB, `nbd0p1..p4`)
-- [ ] Serve `out/disk.img` and reach Android's first-stage logs
+- [x] Static `nbd-client` in the first-stage ramdisk
+- [x] NBD link verified from the phone (`NBDMAGIC`, GPT visible)
+- [x] Alpine rootfs image + GPT disk builder
+- [x] `linux.sh`: connect, mount `nbd0p1`, `switch_root`
+- [ ] First successful Alpine boot and console login
+- [ ] Survive a gadget re-enumeration without losing the rootfs
 
-**Acceptance:** first-stage init detects `system`/`vendor`/`userdata`, mounts
-them, and hands off to `system/bin/init` without an early panic.
+**Acceptance:** prompt on `ttyGS0` from Alpine, `poweroff` cleanly stops the
+phone, and a second boot works without touching the host image.
 
-## M2 — System server / SurfaceFlinger
+## M2 — Input: touchscreen
 
-- [ ] Build vbmeta with verity/verification disabled
-- [ ] Software composer + allocator HAL
-- [ ] SELinux permissive, `androidboot.verifiedbootstate=orange`
-- [ ] SurfaceFlinger starts and draws the boot animation
+Hoolock has the `apple,z2` driver, but the T8010 device tree has no SPI
+controller or touch node, and the iPhone 7 panel is not a Touch Bar panel.
+Port the register/GPIO/rail data from Corellium's `linux-sandcastle`
+(`hx,spi`, `hx,touch`, `D10.mtprops`) into the Hoolock tree, then feed events
+through evdev/uinput.
 
-**Acceptance:** `adb` (over usb0 or the gadget serial) shows `sys.boot_completed`
-or at least a running `system_server`; display shows Android UI.
+**Acceptance:** `evtest` reports multitouch coordinates.
 
-## M3 — Vendor image
+## M3 — Bluetooth
 
-- [ ] Init scripts and SELinux policy for vendor services
-- [ ] `hx-touchd` packaged and started; touch events reach InputReader
-- [ ] Lights/health/power stubs
-- [ ] Audio stub or simple card
-- [x] `vendor.img` reproducible via `scripts/build-vendor-image.sh`
-- [ ] 16 KiB alignment check for every vendor ELF
+Add the BCM combo UART/serdev node (Corellium uses `uart1` with
+`brcm,bcm4345c5`) and the GPIO/PMU wiring; enable `hci_bcm` and provide the
+firmware patch/NVRAM from iOS.
 
-**Acceptance:** touch works in the UI; `vendor.img` is rebuilt from a clean tree.
+**Acceptance:** `hciconfig`/`bluetoothctl` sees the controller and can scan.
 
-## M4 — Hardware polish
+## M4 — WiFi
 
-- [ ] Brightness control via Hoolock's backlight driver
-- [ ] Buttons mapped (power/volume; fake home button is TBA upstream)
-- [ ] Wi-Fi/BT investigation (chipset support unknown)
-- [ ] Sensors/camera investigation
-- [ ] Enforcing SELinux
-- [ ] Performance work for software rendering
+Add a T8010 PCIe host node (plus DART/SART/MSI plumbing) and a
+`brcmfmac` child with `brcm,board-type`, calibration blob and NVRAM.
 
-**Acceptance:** day-to-day usable for a narrow set of tasks; documented gaps.
+**Acceptance:** `iw dev` lists an interface and it associates.
+
+## M5 — Internal storage (optional)
+
+Port the ANS2 NVMe node and mailbox/SART wiring for T8010 (only A11 and M1 are
+supported today). Until then NBD remains the rootfs transport.
+
+**Acceptance:** `nvme list` shows the internal disk; rootfs can live on it.
 
 ## Known blockers / risks
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| 16 KiB GSI compatibility | system cannot exec | `check-gsi-16k.sh`; build AOSP system image if needed |
-| No GPU driver | slow UI | software rendering; wait for upstream |
-| No touch driver in kernel | no input | `hx-touchd` over I2C → uinput |
+| No T8010 SPI/PCIe/UART-BT DT nodes | no touch/WiFi/BT | port data from `linux-sandcastle` |
+| No GPU/display controller driver | slow UI | software rendering; simple framebuffer |
 | USB gadget + NBD stability | I/O stalls | persistent NBD, retries, keep images on host |
 | No TEE | software keys only | accept; document |
 | checkm8 reliability | boot attempts fail | retry DFU/prep; direct cable, no hub |
 | Nightly m1n1 moves | non-reproducible | record SHA-256; pin `M1N1_SHA256` |
-| A10 storage unsupported | netboot required | ADR-3; NFS fallback for debug |
+| A10 storage unsupported | netboot required | M5; NFS fallback for debug |

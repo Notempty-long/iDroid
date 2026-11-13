@@ -42,23 +42,26 @@ Unplug/replug the Lightning cable when it stalls, then let the script continue.
 
 ## DHCP/NBD
 
-- Device must get `172.16.42.1`; host must be `172.16.42.2`.
+- Device must get `192.168.137.1`; host must be `192.168.137.2` (both from
+  `config/netboot.conf`).
 - Start order: `setup-usbnet.sh` **then** `serve-nbd.sh` (qemu-nbd binds to the
   host address).
 - `ss -lunp | grep 10809` confirms the export is listening.
-- Firewall: allow UDP 10809 on `usb0` only.
+- Firewall: allow TCP 10809 on the USB interface only.
 - `nbd-client` errors usually mean the device has no route to the host. Test
-  with `ping 172.16.42.2`.
+  with `ping 192.168.137.2`.
 
-## Android first-stage init
+## Linux rootfs boot
 
-- Logs go to the gadget serial and (if configured) to the host serial console.
-- `androidboot.selinux=permissive` and a vbmeta with verification disabled are
-  required during bring-up; otherwise init aborts early.
-- If `/dev/block/nbd0pN` is missing, check the NBD connection and the GPT: run
-  `sgdisk -p out/disk.img` on the host.
-- `system` mount failures often mean the GSI is not 16 KiB-compatible:
-  `scripts/check-gsi-16k.sh`.
+- Logs go to the gadget serial (`console=ttyGS0`) and the framebuffer console.
+- If `/dev/nbd0p1` is missing, check the NBD connection and the GPT: run
+  `sgdisk -p out/disk-linux.img` on the host.
+- `switch_root` failures usually mean `nbd0p1` is not ext4 or has no
+  `/sbin/init`; rebuild with `make rootfs disk-linux`.
+- A rootfs that mounts but immediately dies usually means the kernel lacks a
+  required option; check `out/kernel/config` (ext4, devtmpfs, NBD are built in).
+- Keep the ACM capture running; the first-stage shell is also reachable over
+  `telnet 192.168.137.1` when the link is healthy.
 
 ## Display
 

@@ -1,96 +1,90 @@
 # iDroid
 
-**Android on the iPhone 7.** A from-scratch port of a Treble GSI to Apple's A10
-(`t8010`) using [HoolockLinux](https://github.com/HoolockLinux) for the kernel
-and boot chain, with the iPhone's USB Ethernet gadget standing in for the
-Android disk.
+**Linux on the iPhone 7.** Boots an Alpine Linux rootfs on Apple's A10
+(`t8010`) using the [HoolockLinux](https://github.com/HoolockLinux) kernel and
+boot chain, with the rootfs served over NBD through the phone's USB Ethernet
+gadget.
 
 | | |
 |---|---|
 | Target | iPhone 7 (GSM / Intel), `iPhone9,3`, board `d101ap`, SoC `t8010` |
-| Android | Android 16 QPR2 ARM64 GSI (`system`) + locally built `vendor` |
 | Kernel | HoolockLinux `hoolock`, arm64, **16 KiB pages** |
 | Boot chain | checkm8 → patched iBSS → m1n1 `idevice` → Linux |
+| Rootfs | Alpine Linux 3.24 aarch64 (musl/BusyBox), ext4 on `/dev/nbd0p1` |
 | Storage | **netboot** — GPT disk image served over NBD via the USB Ethernet gadget |
-| TEE | none (software Keymaster/Gatekeeper only) |
-| Status | boot chain + host tooling scaffolded; Android userspace not yet booted |
+| Link | phone `192.168.137.1`, host `192.168.137.2` (`config/netboot.conf`) |
+| Status | boot chain + NBD rootfs working; touch/WiFi/BT not yet supported by the kernel |
 
 ## Why it looks like this
 
 - **A10 is checkm8-vulnerable.** `remote_boot` loads Hoolock's m1n1 build as a
   fake restore kernel (the iBoot method). It is patched to hard-code this
   phone's identity because device info cannot be queried reliably after pwn.
-- **16 KiB pages everywhere.** HoolockLinux's `config_16k` targets A10 with
-  16 KiB pages, and Android 16 is the first release where Google requires
-  16 KiB support on new 64-bit devices. Kernel, GSI, and vendor must agree.
-- **There is no Android disk.** HoolockLinux documents internal-storage support
-  only for A11. USB device mode does work, so the host serves a GPT disk image
-  over NBD; Android sees ordinary block devices while the data stays on the host.
-- **No TEE, no baseband.** Keymaster/Gatekeeper run in software (planned); there
-  are no cellular calls and no hardware-backed DRM/attestation.
+- **There is no usable internal disk.** Hoolock's T8010 device tree describes no
+  NVMe/ANS2 block device, and no PCIe host either. USB device mode does work, so
+  the host serves a GPT disk image over NBD; the phone sees an ordinary root
+  block device while the data stays on the host.
+- **16 KiB pages.** Hoolock's `config_16k` targets A10 with 16 KiB pages. Keep
+  the kernel and userspace on the same page size; Alpine's aarch64 userland is
+  built with 64 KiB ELF alignment and runs fine.
+- **No TEE, no baseband.** No cellular calls, no hardware-backed DRM or
+  attestation.
+
+## Quick start
+
+```sh
+make check                 # host dependencies
+make vendor                # sync pinned submodules + patches
+make kernel                # out/kernel/Image.gz + t8010-d101.dtb
+make m1n1                  # m1n1-idevice + monitor-stub
+make rootfs                # out/rootfs.img (Alpine 3.24 aarch64, ext4)
+make disk-linux            # out/disk-linux.img (GPT: rootfs + data)
+make boot-image            # out/boot/m1n1-linux.macho
+
+# phone in DFU, then:
+sudo scripts/netboot/setup-usbnet.sh <usb-iface>   # static 192.168.137.2
+sudo scripts/netboot/serve-nbd.sh out/disk-linux.img
+sudo make prep             # iBSS + RestoreDeviceTree
+sudo make boot
+```
+
+The phone's initramfs assigns itself `192.168.137.1`, runs `unudhcpd`, connects
+to the host's `qemu-nbd` at `192.168.137.2:10809`, mounts `/dev/nbd0p1` and
+`switch_root`s into Alpine. Log in on the USB ACM console (`/dev/ttyACM*`) as
+`root` (no password during bring-up).
+
+Addressing lives in `config/netboot.conf` and is used by both the host scripts
+and the initramfs. If your host already owns `.1` on `192.168.137.0/24`, swap
+`NB_PHONE_IP`/`NB_HOST_IP` there and rebuild the initramfs.
 
 ## Repository layout
 
 ```
-docs/        device notes, boot chain, netboot, GSI, decisions, roadmap
-config/      kernel fragment, kernel cmdline, GSI pin
+docs/        boot chain, netboot, hardware notes, decisions
+config/      kernel fragment, kernel cmdline, netboot addressing
 patches/     tracked changes to vendored trees (applied after every sync)
-vendor/      pinned upstream sources (git submodules, shallow)
-scripts/     host tooling (guarded; nothing flashes the phone without asking)
+vendor/      pinned upstream sources (git submodules)
+initramfs/   first-stage init, NBD payloads
+scripts/     host tooling (guarded; nothing touches the phone without asking)
 out/         build artifacts (ignored)
-cache/       downloads and extracted images (ignored)
 ```
 
-## Quick start (host)
+## Current limits
 
-Requirements: Linux x86_64 or arm64, root for booting/netboot, ~10 GB free,
-`clang`, `ld.lld`, `git`, `make`, `ipsw` ≥ 3.1.719, `irecovery`, `libusb` dev
-headers, `qemu-nbd`, `sgdisk`, `cpio`, `e2fsprogs`, `unzip`, `xxd`, `lsusb`,
-`aarch64-linux-gnu-gcc` (for the static `nbd-client`).
+- **No touch, WiFi, Bluetooth or internal storage** under Hoolock: the drivers
+  exist upstream (`apple,z2` for Touch Bar panels, `brcmfmac`, `hci_bcm`,
+  Apple NVMe), but the T8010 device tree has no SPI, PCIe, UART-BT or ANS2
+  nodes, so nothing probes. Adding them is the next milestone
+  (`docs/roadmap.md`). Corellium's `linux-sandcastle` is the reference for the
+  register/GPIO/rail data, but its boot chain is not used here.
+- **Display** is a simple framebuffer from the loader; there is no GPU/display
+  controller driver yet.
+- The legacy Android GSI payload is still present (`idroid_payload=android`);
+  it is not the default and is slated for removal.
 
-```sh
-scripts/check-host.sh        # verify host dependencies
-scripts/vendor-sync.sh       # fetch pinned sources + apply patches
-scripts/fetch-m1n1.sh        # download prebuilt m1n1-idevice + monitor-stub
-scripts/build-kernel.sh      # Image.gz + t8010-d101.dtb (16K pages)
-scripts/fetch-gsi.sh         # download + checksum + extract Android 16 GSI
-scripts/check-gsi-16k.sh     # verify the GSI's ELF alignment
-scripts/build-vendor-image.sh             # out/vendor.img (split SELinux policy)
-scripts/netboot/make-disk.sh out/disk.img cache/gsi/current/system.img
-scripts/build-android-initramfs.sh        # first-stage ramdisk
-INITRAMFS=out/initramfs/initramfs.gz scripts/build-m1n1-blob.sh
-scripts/netboot/setup-usbnet.sh usb0      # host 172.16.42.2
-scripts/netboot/serve-nbd.sh out/disk.img # export the disk over NBD
-sudo scripts/boot.sh                      # phone must be in DFU
-```
+## Legal
 
-`make <target>` wraps the same commands; `make help` lists them. `make
-boot-image` builds and bundles the ramdisk; `make linux-image` builds a debug
-bundle without it.
-
-## Vendored sources
-
-| Path | Upstream | Branch |
-|---|---|---|
-| `vendor/linux` | HoolockLinux/linux | `hoolock` |
-| `vendor/m1n1` | HoolockLinux/m1n1 | `idevice` |
-| `vendor/remote_boot` | HoolockLinux/remote_boot | `master` |
-| `vendor/projectsandcastle` | corellium/projectsandcastle | `master` |
-| `vendor/docs` | HoolockLinux/docs | `master` |
-
-Pins are the gitlinks in this repository plus `vendor/versions.lock`. Never edit
-a vendored tree in place: changes go in `patches/<submodule>/` and are applied by
-`scripts/apply-patches.sh`, so they survive a resync and rebase.
-
-## Non-goals
-
-- Installing to internal storage (unsupported on A10 under HoolockLinux)
-- Hardware GPU acceleration (display works; GPU is TBA upstream)
-- Cellular modem, calls, SMS (baseband is not supported)
-- TEE-backed keys, Widevine L1, hardware attestation
-
-## Licensing / redistribution
-
-The Google GSI is for development and app validation; do not commit or
-redistribute it (see `docs/gsi.md`). Kernel and bootloader sources keep their
-upstream licenses (GPL-2.0 / BSD-3-Clause).
+Apple's firmware, the GSI, and disk images are not part of this repository.
+`vendor/` content keeps its upstream licenses. Nothing here bypasses the phone's
+hardware security; the boot chain relies on checkm8, which is an unpatchable
+boot ROM bug on A10.

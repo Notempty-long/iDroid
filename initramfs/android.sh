@@ -1,13 +1,16 @@
 #!/bin/busybox sh
 # Connect the GPT disk image from the host over USB Ethernet, mount Android's
-# partitions, then hand off to Android's own init.
+# partitions, then hand off to Android's own init. This is the legacy payload;
+# the default is the Linux rootfs in linux.sh.
 #
-# Device: 172.16.42.1 (DHCP server, see init_functions.sh)
-# Host:   172.16.42.2 (receives a lease; runs qemu-nbd on 10809)
+# Link addressing comes from /etc/idroid-net.conf (config/netboot.conf).
 
-NBD_HOST="${NBD_HOST:-172.16.42.2}"
-NBD_PORT="${NBD_PORT:-10809}"
-NBD_EXPORT="${NBD_EXPORT:-idroid}"
+[ -e /etc/idroid-net.conf ] && . /etc/idroid-net.conf
+
+PHONE_IP="${NB_PHONE_IP:-192.168.137.1}"
+NBD_HOST="${NBD_HOST:-${NB_HOST_IP:-192.168.137.2}}"
+NBD_PORT="${NBD_PORT:-${NB_NBD_PORT:-10809}}"
+NBD_EXPORT="${NBD_EXPORT:-${NB_NBD_EXPORT:-idroid}}"
 NBD_CLIENT="${NBD_CLIENT:-/usr/local/bin/nbd-client}"
 NEWROOT="${NEWROOT:-/newroot}"
 
@@ -36,10 +39,10 @@ while [ "$(cat "/sys/class/net/$IFACE/carrier" 2>/dev/null)" != "1" ]; do
   sleep 1
 done
 
-# The gadget address is set by start_unudhcpd (172.16.42.1). Make sure it stuck.
-ip addr show dev "$IFACE" | grep -q '172\.16\.42\.1' || ip addr add 172.16.42.1/24 dev "$IFACE"
+# The gadget address is set by start_unudhcpd. Make sure it stuck.
+ifconfig "$IFACE" 2>/dev/null | grep -q "addr:$PHONE_IP" || ifconfig "$IFACE" "$PHONE_IP" netmask 255.255.255.0 up
 
-# The host also needs its lease (and qemu-nbd needs 172.16.42.2) before the
+# The host also needs its lease (and qemu-nbd needs its address) before the
 # connect makes sense; the gadget was just bound, so allow a few seconds.
 log "waiting for host $NBD_HOST to answer"
 i=0

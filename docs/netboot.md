@@ -1,124 +1,122 @@
-# Netboot: Android over the USB Ethernet gadget
+# Netboot: Linux from NBD over the USB Ethernet gadget
 
-A10 has no usable internal storage under HoolockLinux, so Android's partitions
-live on the host. The phone gets a normal block device (`/dev/nbd0`) over the
-USB Ethernet gadget, so Android sees a GPT disk exactly as it would on a real
-device.
+Hoolock's T8010 device tree exposes no internal block device, so the rootfs
+lives on the host. The phone gets `/dev/nbd0` over the USB Ethernet gadget and
+`switch_root`s into a normal ext4 rootfs on `/dev/nbd0p1`.
 
 ## Topology
 
 | Side | Interface | Address |
 |---|---|---|
-| Host | `usb0` (CDC-ECM/NCM host driver) | `172.16.42.2/24` (static) |
-| Phone | `usb0`/`ncm0` (gadget) | `172.16.42.1/24` + DHCP server |
+| Host | `usb0` (CDC-ECM/NCM host driver) | `192.168.137.2/24` (static) |
+| Phone | `ncm0`/`usb0` (gadget) | `192.168.137.1/24` + DHCP server |
 
-Hoolock's example initramfs (`init_functions.sh`) assigns `172.16.42.1` to the
-gadget and runs `unudhcpd`, which leases `172.16.42.2` to the host. The host
-therefore should **not** run a DHCP server; give it the static address instead.
-Our first-stage initramfs keeps that behaviour and does not run `udhcpc`.
+Both addresses come from `config/netboot.conf`; the same file is baked into the
+initramfs as `/etc/idroid-net.conf` and sourced by the host scripts, so there is
+one source of truth.
 
-## Primary path: NBD
+Hoolock's `init_functions.sh` assigns the phone address and runs `unudhcpd`,
+which leases the host address. The host must **not** run a DHCP server on this
+interface; `scripts/netboot/setup-usbnet.sh` gives it the static address.
 
-The host serves one raw GPT image over NBD. The image layout:
+If your host already owns `.1` on this subnet (Windows ICS uses
+`192.168.137.1`), swap `NB_PHONE_IP` and `NB_HOST_IP` in `config/netboot.conf`
+and rebuild the initramfs (`make initramfs boot-image`).
+
+## Disk layout
+
+`scripts/netboot/make-linux-disk.sh` creates:
 
 | # | Name | Size | Contents |
 |---|---|---|---|
-| 1 | `vbmeta` | 8 MiB | AVB metadata with verity/verification disabled |
-| 2 | `system` | 6 GiB | GSI `system.img`, written verbatim |
-| 3 | `vendor` | 1 GiB | minimal `vendor.img` (SELinux policy + `build.prop`; HALs later) |
-| 4 | `userdata` | rest | ext4, created on first boot or pre-seeded |
+| 1 | `rootfs` | 4 GiB | ext4, written verbatim from `out/rootfs.img` |
+| 2 | `data` | rest | ext4, mounted at `/data` when present |
 
-`scripts/netboot/make-disk.sh` creates the table (and optionally writes a
-`system.img` into partition 2).
+`out/rootfs.img` is built by `scripts/build-alpine-rootfs.sh` from Alpine's
+aarch64 minirootfs (BusyBox init, no OpenRC) plus:
 
-### Host
+- `/etc/init.d/rcS` — mounts `/proc`, `/sys`, `/dev`, tmpfs and re-asserts the
+  USB link address
+- gettys on `ttyGS0` (USB ACM console) and `tty0`
+- `root` unlocked for console login (bring-up only)
+- `/etc/idroid-net.conf` so the rootfs knows the link addresses
+
+## Host
 
 ```sh
-scripts/build-vendor-image.sh            # out/vendor.img (split SELinux policy)
-scripts/netboot/make-disk.sh out/disk.img cache/gsi/current/system.img
-scripts/netboot/setup-usbnet.sh usb0     # static 172.16.42.2/24
-scripts/netboot/serve-nbd.sh out/disk.img
+make rootfs                                     # out/rootfs.img
+make disk-linux                                 # out/disk-linux.img
+sudo scripts/netboot/setup-usbnet.sh <iface>    # static 192.168.137.2/24
+sudo scripts/netboot/serve-nbd.sh out/disk-linux.img
 ```
 
-`setup-usbnet.sh` only assigns the host address; the phone's initramfs is the
-DHCP server on this link. `serve-nbd.sh` uses `qemu-nbd --persistent --shared=4`
-on `172.16.42.2:10809`. It must be started only after `usb0` is up, otherwise
-the bind fails.
+`serve-nbd.sh` runs `qemu-nbd --persistent --shared=4` on
+`192.168.137.2:10809` with export name `idroid`. It must be started only after
+the host interface is up, otherwise the bind fails.
 
 If the host runs a firewall, allow inbound traffic from the link subnet. With
-ufw, `setup-usbnet.sh` adds this automatically; otherwise do it by hand:
+ufw, `setup-usbnet.sh` adds this automatically; otherwise:
 
 ```sh
-sudo ufw allow from 172.16.42.0/24 comment 'iDroid USB netboot'
+sudo ufw allow from 192.168.137.0/24 comment 'iDroid USB netboot'
 ```
 
 ICMP is usually allowed by default, so the link still pings while TCP SYNs to
 `10809` are dropped; `nbd-client` then blocks in `connect()` with no output.
 
-### Device
+## Device
 
-The Android initramfs must, in order:
+`initramfs/init` does, in order:
 
-1. Load `nbd` (built into the kernel via `config/android.fragment`).
-2. Bring up the gadget and start `unudhcpd` (already done by Hoolock's
-   `init_functions.sh`); the device owns `172.16.42.1`.
-3. `nbd-client 172.16.42.2 10809 /dev/nbd0 -N idroid`
-   (or omit `-N` if the export is the default). Do not pass `-persist`: we build
-   `nbd-client` without libnl and its reconnect monitor is netlink-only, so the
-   flag is silently ignored in 3.27.x.
-4. Export `by-name` symlinks for the GPT partitions (ueventd rules or a small
-   first-stage helper): `system → nbd0p2`, `vendor → nbd0p3`,
-   `userdata → nbd0p4`, `vbmeta → nbd0p1`.
-5. Mount the partitions and hand off to Android's `init selinux_setup`:
-   `nbd0p2` (the GSI) is **system-as-root**, so it becomes the new root via
-   `chroot`; `nbd0p3` is mounted at `/vendor` and `nbd0p4` at `/data` inside it.
-   `/dev`, `/proc` and `/sys` are moved into the new root first, because the
-   stock ramdisk init does the same before re-exec'ing the system init.
+1. `setup_usb_network` — create and bind the NCM function **on its own**.
+2. `start_unudhcpd` — assign `192.168.137.1`, lease `192.168.137.2`.
+3. Add the ACM function and rebind the UDC once, so `console=ttyGS0` works.
+4. `exec /linux.sh` (unless `idroid_debug=1` or `idroid_payload=android`).
 
-Because the fstab and first-stage ramdisk are ours, absolute
-`/dev/block/nbd0pN` paths are acceptable; `by-name` symlinks just make the
-configuration look like a normal device and ease later migration.
+Binding NCM and ACM together before the first UDC bind makes the host's
+`cdc_ncm` TX path stall (`NETDEV WATCHDOG: transmit queue 0 timed out`, ARP
+never resolves) even though the initial DHCP exchange succeeds. Keep the
+ordering above.
 
-## Why NBD and not NFS root
+`initramfs/linux.sh` then:
 
-NFS root is simpler for kernel debugging, but Android expects block devices for
-`system`, `vendor`, `userdata`, `vbmeta`, and dm-verity/overlayfs. NBD matches
-those semantics and lets the same images be loop-mounted on the host. Keep an
-NFS-root ramdisk as a **fallback** for early kernel/init debugging only.
+1. Waits for carrier and for `192.168.137.2` to answer.
+2. `nbd-client 192.168.137.2 10809 /dev/nbd0 -N idroid`.
+3. Mounts `/dev/nbd0p1` on `/newroot` (and `nbd0p2` on `/data` if present).
+4. Moves `/dev`, `/proc`, `/sys` into the new root.
+5. `switch_root /newroot /sbin/init`.
 
-## Bandwidth and safety
+Do not pass `-persist`: the pinned `nbd-client` 3.27.1 is built without libnl
+and its reconnect monitor is netlink-only, so the flag is silently ignored. The
+`nbd-client` helper keeps running after `switch_root` and services the socket.
 
-- USB 2.0 + NBD is sufficient for bring-up; expect slow first boot.
-- The gadget is host-local. Do not bridge `usb0` to a physical LAN.
-- `qemu-nbd` writes are not power-fail safe. Keep the image backed up and expect
-  to re-image `userdata` often.
+## Debugging
 
-## Debugging the first stage
-
-The gadget always exposes an ACM serial alongside the network function, and the
-kernel command line sends the console there (`console=ttyGS0 console=tty0`), so
-kernel and Android `init` output are visible before the display works. Capture
-it from the host, across resets and re-enumeration:
+The gadget always exposes an ACM serial with the kernel console
+(`console=ttyGS0 console=tty0`). Capture it across resets and re-enumeration:
 
 ```sh
 sudo nohup scripts/netboot/capture-acm.sh /tmp/idroid-acm.log >/dev/null 2>&1 &
 ```
 
-Android's `init` reboots itself (to recovery) on fatal errors, so `panic=0` does
-not keep the phone alive; the ACM log is where the reason is printed.
+`idroid_debug=1` in `config/cmdline` stops in the first-stage shell instead of
+handing off. The first stage also runs `telnetd` on `192.168.137.1:23`, so the
+host can reach the shell over the link even when the ACM port is stuck.
 
-Add `idroid_debug=1` to `config/cmdline` (or the m1n1 bootargs) to stop in the
-ramdisk shell instead of starting Android. The phone also runs `telnetd` on
-`172.16.42.1:23` whenever the gadget is up.
+From the phone side:
 
-## Fallback: NFS root
-
-If the image gets corrupted or NBD is not yet wired up, boot Linux with:
-
-```
-root=/dev/nfs nfsroot=172.16.42.2:/srv/idroid/rootfs,vers=4.2 rw \
-ip=172.16.42.1::172.16.42.2:255.255.255.0::usb0:off
+```sh
+ip addr                       # gadget address
+nbd-client -c /dev/nbd0       # connected pid (0 when disconnected)
+mount | grep nbd              # rootfs mounted at /newroot
 ```
 
-This is a Linux rootfs, not Android; it is for validating the gadget, DHCP,
-and display path.
+If `/dev/nbd0p1` never appears, check the host's `qemu-nbd` output and the
+firewall rule above.
+
+## Legacy Android payload
+
+`initramfs/android.sh` still boots the Android 16 GSI image (GPT: vbmeta /
+system / vendor / userdata) when `idroid_payload=android` is on the kernel
+command line. It is kept only for reference while the Linux path stabilises and
+is not built by the default targets.
