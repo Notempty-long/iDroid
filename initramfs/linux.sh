@@ -58,7 +58,8 @@ log "waiting for host $NBD_HOST to answer"
 i=0
 while ! ping -c 1 -W 1 "$NBD_HOST" >/dev/null 2>&1; do
   i=$((i + 1))
-  [ "$i" -ge 30 ] && die "host $NBD_HOST unreachable (is scripts/netboot/serve-nbd.sh running?)"
+  [ "$i" -ge 90 ] && die "host $NBD_HOST unreachable (run scripts/netboot/setup-usbnet.sh + serve-nbd.sh)"
+  [ $((i % 15)) -eq 0 ] && log "still waiting for $NBD_HOST (${i}s; gadget may have re-enumerated)"
   sleep 1
 done
 

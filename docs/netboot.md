@@ -80,7 +80,9 @@ ordering above.
 
 `initramfs/linux.sh` then:
 
-1. Waits for carrier and for `192.168.137.2` to answer.
+1. Waits for carrier and then for `192.168.137.2` to answer (up to 90 s; the
+   gadget re-enumerates once when ACM is added, so the host may need a moment
+   to re-apply its address and start `qemu-nbd`).
 2. `nbd-client 192.168.137.2 10809 /dev/nbd0 -N idroid`.
 3. Mounts `/dev/nbd0p1` on `/newroot` (and `nbd0p2` on `/data` if present).
 4. Moves `/dev`, `/proc`, `/sys` into the new root.
